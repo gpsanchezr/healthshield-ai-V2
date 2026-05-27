@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Detalle Paciente — HealthShield AI{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb"><li class="breadcrumb-item"><a href="/pacientes/">Pacientes</a></li>
+  <li class="breadcrumb-item active">Detalle</li></ol>
+</nav>
+<div id="detailContent"><div class="text-center py-5"><div class="spinner-border text-primary"></div></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const pacienteId = window.location.pathname.split('/').filter(Boolean).pop();
+const RIESGO_COLOR = {Bajo:'#27ae60',Medio:'#f39c12',Alto:'#e67e22','Crítico':'#e74c3c'};
+
+async function loadDetalle(){
+  const r = await fetch(`/api/pacientes/${pacienteId}/`, {headers: authHeaders()});
+  if(!r.ok){ document.getElementById('detailContent').innerHTML='<div class="alert alert-danger">Paciente no encontrado</div>'; return; }
+  const p = await r.json();
+  const reg = p.registros?.[0]||{};
+  const color = RIESGO_COLOR[reg.riesgo_enfermedad]||'#6c757d';
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="row g-4">
+      <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-center p-4">
+          <i class="bi bi-person-circle fs-1 text-primary mb-2"></i>
+          <h4 class="fw-bold">${p.nombres} ${p.apellidos}</h4>
+          <span class="badge mb-2" style="background:${color};font-size:.9rem">${reg.riesgo_enfermedad||'—'}</span>
+          <p class="text-muted mb-1">${p.edad} años · ${p.sexo==='M'?'Masculino':'Femenino'}</p>
+          <p class="text-muted small">ID Paciente: ${p.id_paciente_original}</p>
+          <hr>
+          <button class="btn btn-primary w-100" onclick="predecir()"><i class="bi bi-cpu me-2"></i>Predecir con IA</button>
+          <div id="prediccionResult" class="mt-3"></div>
+        </div>
+      </div>
+      <div class="col-md-9">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-transparent fw-bold"><i class="bi bi-clipboard2-pulse me-2 text-primary"></i>Signos Vitales y Métricas</div>
+          <div class="card-body">
+            <div class="row g-3">
+              ${[
+                ['IMC',reg.imc, reg.clasificacion_imc||''],
+                ['Glucosa',reg.glucosa,'mg/dL'],
+                ['Presión Sistólica',reg.presion_sistolica,'mmHg'],
+                ['Presión Diastólica',reg.presion_diastolica,'mmHg'],
+                ['Frec. Cardiaca',reg.frecuencia_cardiaca,'bpm'],
+                ['Saturación O₂',reg.saturacion_oxigeno,'%'],
+                ['Temperatura',reg.temperatura,'°C'],
+                ['Colesterol',reg.colesterol,'mg/dL'],
+              ].map(([label,val,unit])=>`
+                <div class="col-6 col-md-3">
+                  <div class="card border-0 bg-light text-center p-3">
+                    <small class="text-muted">${label}</small>
+                    <strong class="d-block fs-5">${val||'—'}</strong>
+                    <small class="text-muted">${unit}</small>
+                  </div>
+                </div>`).join('')}
+            </div>
+            <hr>
+            <div class="row g-3">
+              <div class="col-md-4"><strong>Diagnóstico:</strong><br>${reg.diagnostico_preliminar||'—'}</div>
+              <div class="col-md-4"><strong>Actividad física:</strong><br>${reg.actividad_fisica||'—'}</div>
+              <div class="col-md-4"><strong>Factores:</strong><br>
+                ${reg.fumador?'<span class="badge bg-danger me-1">Fumador</span>':''}
+                ${reg.consumo_alcohol?'<span class="badge bg-warning text-dark me-1">Alcohol</span>':''}
+                ${reg.antecedentes_familiares?'<span class="badge bg-info text-dark">Antec. fam.</span>':''}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card border-0 shadow-sm mt-3">
+          <div class="card-header bg-transparent fw-bold"><i class="bi bi-clock-history me-2 text-primary"></i>Historial de Consultas</div>
+          <div class="card-body p-0">
+            <table class="table mb-0">
+              <thead class="table-light"><tr><th>Fecha</th><th>Riesgo</th><th>Glucosa</th><th>Presión</th><th>Diagnóstico</th></tr></thead>
+              <tbody>${(p.registros||[]).map(r=>`
+                <tr>
+                  <td>${r.fecha_consulta||'—'}</td>
+                  <td><span class="badge" style="background:${RIESGO_COLOR[r.riesgo_enfermedad]||'#6c757d'}">${r.riesgo_enfermedad}</span></td>
+                  <td>${r.glucosa||'—'}</td>
+                  <td>${r.presion_sistolica||'—'}/${r.presion_diastolica||'—'}</td>
+                  <td><small>${r.diagnostico_preliminar||'—'}</small></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+        <div class="card border-0 shadow-sm mt-3">
+          <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-robot me-2 text-primary"></i>Análisis con IA Generativa</span>
+            <div class="d-flex gap-2 align-items-center">
+              <select id="iaProvider" class="form-select form-select-sm" style="width:180px">
+                <option value="claude">🤖 Claude (Anthropic)</option>
+                <option value="gemini">✨ Gemini (Google)</option>
+              </select>
+              <button class="btn btn-outline-primary btn-sm" onclick="analizarIA()">
+                <i class="bi bi-stars me-1"></i>Analizar
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="iaResult">
+            <p class="text-muted small mb-0">
+              <i class="bi bi-info-circle me-1"></i>
+              Selecciona el proveedor de IA y haz clic en "Analizar" para obtener un análisis clínico narrativo
+              generado por inteligencia artificial basado en los datos y la predicción del modelo ML.
+            </p>
+          </div>
+        </div>
+    </div>`;
+}
+
+async function predecir(){
+  const el = document.getElementById('prediccionResult');
+  el.innerHTML='<div class="spinner-border spinner-border-sm text-primary"></div>';
+  const r = await fetch(`/api/predicciones/paciente/${pacienteId}/`, {method:'POST', headers: authHeaders()});
+  const d = await r.json();
+  const BADGE = {Bajo:'success',Medio:'warning',Alto:'orange','Crítico':'danger'};
+  if(r.ok){
+    el.innerHTML=`<div class="alert alert-${BADGE[d.riesgo_predicho]||'secondary'} p-3 text-start">
+      <strong>IA: ${d.riesgo_predicho}</strong> (${(d.probabilidad_max*100).toFixed(1)}%)<br>
+      <hr class="my-2">
+      <small><strong>Factores clave:</strong><br>
+      ${d.factores_clave.map(f=>`• ${f.variable.replace(/_/g,' ')}: ${(f.importancia*100).toFixed(1)}%`).join('<br>')}
+      </small>
+    </div>`;
+  } else {
+    el.innerHTML=`<div class="alert alert-danger p-2 small">${d.error||'Error'}</div>`;
+  }
+}
+
+loadDetalle();
+
+async function analizarIA() {
+  const proveedor = document.getElementById('iaProvider')?.value || 'claude';
+  const el = document.getElementById('iaResult');
+  el.innerHTML = `<div class="text-center py-3">
+    <div class="spinner-border text-primary mb-2"></div>
+    <p class="text-muted small">Consultando ${proveedor === 'claude' ? 'Claude (Anthropic)' : 'Gemini (Google)'}...</p>
+  </div>`;
+
+  const r = await fetch(\`/api/predicciones/analisis-ia/\${pacienteId}/\`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ proveedor }),
+  });
+  const d = await r.json();
+  const ia = d.analisis_ia || {};
+
+  if (!ia.disponible) {
+    el.innerHTML = `<div class="alert alert-warning mb-0">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      <strong>${ia.proveedor || proveedor} no disponible.</strong><br>
+      <small>${ia.error || 'Configura la API key en el archivo .env'}</small><br>
+      <small class="text-muted mt-1 d-block">
+        Claude: agrega <code>ANTHROPIC_API_KEY</code> · 
+        Gemini: agrega <code>GEMINI_API_KEY</code>
+      </small>
+    </div>`;
+    return;
+  }
+
+  const RIESGO_BADGE = {Bajo:'success',Medio:'warning',Alto:'orange','Crítico':'danger'};
+  const pred = d.prediccion || {};
+  const badge = RIESGO_BADGE[pred.riesgo_predicho] || 'secondary';
+
+  el.innerHTML = `
+    <div class="alert alert-${badge} alert-sm py-2 mb-3">
+      <strong>Predicción ML: ${pred.riesgo_predicho}</strong> (${((pred.probabilidad_max||0)*100).toFixed(1)}%)
+    </div>
+    <div class="mb-2">
+      <small class="text-muted"><i class="bi bi-robot me-1"></i>
+        Análisis generado por <strong>${ia.proveedor}</strong> · 
+        Modelo: <code>${ia.modelo || '?'}</code> · 
+        ${ia.tokens_salida ? ia.tokens_salida + ' tokens' : ''}
+      </small>
+    </div>
+    <div class="bg-light rounded p-3" style="white-space:pre-wrap;font-size:13.5px;line-height:1.7">${ia.analisis}</div>
+    <p class="text-muted small mt-2 mb-0">
+      <i class="bi bi-info-circle me-1"></i>
+      Este análisis es orientativo y generado por IA. No reemplaza la evaluación médica presencial.
+    </p>`;
+}
+
+</script>
+{% endblock %}

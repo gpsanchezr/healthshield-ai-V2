@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — HealthShield AI{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div><h3 class="mb-0 fw-bold"><i class="bi bi-speedometer2 me-2 text-primary"></i>Panel de Control Clínico</h3>
+  <small class="text-muted">Última actualización: <span id="lastUpdate">-</span></small></div>
+  <button class="btn btn-outline-primary btn-sm" onclick="loadDashboard()"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar</button>
+</div>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4" id="kpiCards">
+  <div class="col-md-3"><div class="card text-center border-0 shadow-sm h-100">
+    <div class="card-body"><i class="bi bi-people-fill fs-2 text-primary mb-2"></i>
+    <h6 class="text-muted">Total Registros</h6><h2 class="fw-bold" id="kpi-total">—</h2></div></div></div>
+  <div class="col-md-3"><div class="card text-center border-0 shadow-sm h-100 border-danger">
+    <div class="card-body"><i class="bi bi-exclamation-octagon-fill fs-2 text-danger mb-2"></i>
+    <h6 class="text-muted">Pacientes Críticos</h6><h2 class="fw-bold text-danger" id="kpi-criticos">—</h2></div></div></div>
+  <div class="col-md-3"><div class="card text-center border-0 shadow-sm h-100">
+    <div class="card-body"><i class="bi bi-heart-pulse-fill fs-2 text-warning mb-2"></i>
+    <h6 class="text-muted">Hipertensos</h6><h2 class="fw-bold text-warning" id="kpi-hiper">—</h2></div></div></div>
+  <div class="col-md-3"><div class="card text-center border-0 shadow-sm h-100">
+    <div class="card-body"><i class="bi bi-droplet-fill fs-2 text-info mb-2"></i>
+    <h6 class="text-muted">Diabéticos</h6><h2 class="fw-bold text-info" id="kpi-diabeticos">—</h2></div></div></div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-md-3"><div class="card border-0 shadow-sm text-center">
+    <div class="card-body"><i class="bi bi-lungs-fill fs-4 text-success mb-1"></i>
+    <h6 class="text-muted mb-0">Fumadores</h6><h4 class="fw-bold text-success" id="kpi-fumadores">—</h4></div></div></div>
+  <div class="col-md-3"><div class="card border-0 shadow-sm text-center">
+    <div class="card-body"><i class="bi bi-clipboard-data fs-4 text-purple mb-1"></i>
+    <h6 class="text-muted mb-0">Glucosa Promedio</h6><h4 class="fw-bold" id="kpi-glucosa">—</h4><small class="text-muted">mg/dL</small></div></div></div>
+  <div class="col-md-3"><div class="card border-0 shadow-sm text-center">
+    <div class="card-body"><i class="bi bi-person-fill fs-4 text-primary mb-1"></i>
+    <h6 class="text-muted mb-0">IMC Promedio</h6><h4 class="fw-bold" id="kpi-imc">—</h4></div></div></div>
+  <div class="col-md-3"><div class="card border-0 shadow-sm text-center">
+    <div class="card-body"><i class="bi bi-activity fs-4 text-primary mb-1"></i>
+    <h6 class="text-muted mb-0">Riesgo Promedio</h6>
+    <h4 class="fw-bold" id="kpi-riesgo-promedio">—</h4>
+    <small class="text-muted" id="kpi-riesgo-label"></small></div></div></div>
+  <div class="col-md-3"><div class="card border-0 shadow-sm text-center bg-danger bg-opacity-10">
+    <div class="card-body"><i class="bi bi-bell-fill fs-4 text-danger mb-1"></i>
+    <h6 class="text-muted mb-0">Alertas Sin Ver</h6><h4 class="fw-bold text-danger" id="kpi-alertas">—</h4></div></div></div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="row g-4 mb-4">
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm"><div class="card-header bg-transparent fw-bold"><i class="bi bi-pie-chart me-2 text-primary"></i>Distribución de Riesgo</div>
+    <div class="card-body"><canvas id="riesgoChart" height="220"></canvas></div></div>
+  </div>
+  <div class="col-md-7">
+    <div class="card border-0 shadow-sm"><div class="card-header bg-transparent fw-bold"><i class="bi bi-bar-chart me-2 text-primary"></i>Top Diagnósticos</div>
+    <div class="card-body"><canvas id="diagChart" height="220"></canvas></div></div>
+  </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="row g-4">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm"><div class="card-header bg-transparent fw-bold"><i class="bi bi-gender-ambiguous me-2 text-primary"></i>IMC por Categoría</div>
+    <div class="card-body"><canvas id="imcChart" height="200"></canvas></div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm"><div class="card-header bg-transparent fw-bold"><i class="bi bi-graph-up me-2 text-primary"></i>Tendencia ETL (últimas ejecuciones)</div>
+    <div class="card-body"><canvas id="tendenciaChart" height="200"></canvas></div></div>
+  </div>
+</div>
+
+<!-- Heatmap + Segmentación edad -->
+<div class="row g-4 mt-2">
+  <div class="col-md-7">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-bold">
+        <i class="bi bi-grid-3x3 me-2 text-primary"></i>Heatmap de Correlación Clínica
+        <small class="text-muted fw-normal ms-2">coeficiente de Pearson</small>
+      </div>
+      <div class="card-body"><canvas id="heatmapChart" height="280"></canvas></div>
+    </div>
+  </div>
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-bold">
+        <i class="bi bi-people me-2 text-primary"></i>Pacientes por Grupo de Edad
+      </div>
+      <div class="card-body"><canvas id="edadChart" height="280"></canvas></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let riesgoChart, diagChart, imcChart, tendenciaChart;
+
+async function loadDashboard(){
+  const r=await fetch('/api/dashboard/kpis/',{headers:authHeaders()});
+  if(!r.ok){window.location.href='/login/';return;}
+  const d=await r.json();const k=d.kpis;
+  document.getElementById('kpi-total').textContent=k.total_registros?.toLocaleString()||'—';
+  document.getElementById('kpi-criticos').textContent=k.pacientes_criticos||'0';
+  document.getElementById('kpi-hiper').textContent=k.pacientes_hipertensos||'0';
+  document.getElementById('kpi-diabeticos').textContent=k.pacientes_diabeticos||'0';
+  document.getElementById('kpi-fumadores').textContent=k.pacientes_fumadores||'0';
+  document.getElementById('kpi-glucosa').textContent=k.promedio_glucosa||'—';
+  document.getElementById('kpi-imc').textContent=k.promedio_imc||'—';
+  document.getElementById('kpi-alertas').textContent=k.alertas_sin_ver||'0';
+  document.getElementById('lastUpdate').textContent=new Date().toLocaleTimeString('es-CO');
+  renderCharts(k);
+}
+
+function renderCharts(k){
+  const riesgoDist=k.distribucion_riesgo||{};
+  if(riesgoChart)riesgoChart.destroy();
+  riesgoChart=new Chart(document.getElementById('riesgoChart'),{
+    type:'doughnut',
+    data:{labels:Object.keys(riesgoDist),datasets:[{data:Object.values(riesgoDist),
+      backgroundColor:['#27ae60','#f39c12','#e67e22','#e74c3c'],borderWidth:2}]},
+    options:{plugins:{legend:{position:'bottom'}},cutout:'65%'}
+  });
+
+  const diags=k.top_diagnosticos||[];
+  if(diagChart)diagChart.destroy();
+  diagChart=new Chart(document.getElementById('diagChart'),{
+    type:'bar',
+    data:{labels:diags.map(d=>d.diagnostico),datasets:[{label:'Pacientes',
+      data:diags.map(d=>d.total),backgroundColor:'#2980b9',borderRadius:6}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}
+  });
+
+  const imcDist=k.distribucion_imc||{};
+  if(imcChart)imcChart.destroy();
+  imcChart=new Chart(document.getElementById('imcChart'),{
+    type:'bar',
+    data:{labels:Object.keys(imcDist),datasets:[{label:'Pacientes',data:Object.values(imcDist),
+      backgroundColor:['#3498db','#27ae60','#f39c12','#e74c3c'],borderRadius:8}]},
+    options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+  });
+
+  loadTendencia();
+}
+
+async function loadTendencia(){
+  const r=await fetch('/api/dashboard/tendencia/',{headers:authHeaders()});
+  const d=await r.json();const t=d.tendencia||[];
+  if(tendenciaChart)tendenciaChart.destroy();
+  tendenciaChart=new Chart(document.getElementById('tendenciaChart'),{
+    type:'line',
+    data:{labels:t.map(x=>x.fecha),datasets:[
+      {label:'Registros',data:t.map(x=>x.registros),borderColor:'#2980b9',backgroundColor:'rgba(41,128,185,.1)',fill:true,tension:.4},
+      {label:'Quality Score',data:t.map(x=>x.quality_score),borderColor:'#27ae60',yAxisID:'y2',tension:.4}
+    ]},
+    options:{scales:{y:{beginAtZero:true},y2:{position:'right',min:0,max:100}},plugins:{legend:{position:'top'}}}
+  });
+}
+
+loadDashboard();
+setInterval(loadDashboard, 60000);
+
+// ── Tendencias clínicas reales ────────────────────────────────────────────────
+let tendenciaClinicaChart;
+async function loadTendenciaClinica() {
+  const campo = document.getElementById('tendenciaCampo')?.value || 'glucosa';
+  try {
+    const r = await fetch(`/api/analytics/tendencia-clinica/?campo=${campo}`, {headers: authHeaders()});
+    const d = await r.json();
+    const datos = d.datos || [];
+    if (!datos.length) return;
+
+    const labels   = datos.map(x => x.mes_label || x.mes);
+    const promedio = datos.map(x => x.promedio);
+    const maximo   = datos.map(x => x.maximo);
+    const minimo   = datos.map(x => x.minimo);
+
+    const nombreCampo = document.getElementById('tendenciaCampo')?.selectedOptions[0]?.text || campo;
+
+    if (tendenciaClinicaChart) tendenciaClinicaChart.destroy();
+    tendenciaClinicaChart = new Chart(document.getElementById('tendenciaClinicaChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: `${nombreCampo} — Promedio`, data: promedio,
+            borderColor: '#2980b9', backgroundColor: 'rgba(41,128,185,.1)',
+            fill: false, tension: 0.4, borderWidth: 2, pointRadius: 4 },
+          { label: 'Máximo', data: maximo,
+            borderColor: '#e74c3c', borderDash: [5,4],
+            fill: false, tension: 0.4, borderWidth: 1.5, pointRadius: 2 },
+          { label: 'Mínimo', data: minimo,
+            borderColor: '#27ae60', borderDash: [5,4],
+            fill: false, tension: 0.4, borderWidth: 1.5, pointRadius: 2 },
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { beginAtZero: false, title: { display: true, text: nombreCampo } },
+          x: { title: { display: true, text: 'Mes' } }
+        }
+      }
+    });
+  } catch(e) { console.warn('Tendencias clínicas no disponibles:', e); }
+}
+
+
+// ── Heatmap de correlación ───────────────────────────────────────────────────
+async function loadHeatmap() {
+  try {
+    const r = await fetch('/api/analytics/correlacion/', {headers: authHeaders()});
+    const d = await r.json();
+    if (d.error) return;
+
+    const labels = d.labels;
+    const n = labels.length;
+
+    // Generar canvas manualmente para heatmap (sin plugin externo)
+    const canvas = document.getElementById('heatmapChart');
+    const ctx = canvas.getContext('2d');
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+
+    function drawHeatmap() {
+      const W = canvas.offsetWidth; const H = canvas.offsetHeight || 280;
+      canvas.width = W * devicePixelRatio; canvas.height = H * devicePixelRatio;
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+
+      const pad = { top:30, left:80, right:20, bottom:80 };
+      const cellW = (W - pad.left - pad.right)  / n;
+      const cellH = (H - pad.top  - pad.bottom) / n;
+
+      ctx.font = `${Math.min(cellW*0.32, 10)}px -apple-system, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+      d.data_points.forEach(pt => {
+        const v = pt.v;
+        const x = pad.left + pt.x * cellW;
+        const y = pad.top  + pt.y * cellH;
+        // Color: azul=negativo, blanco=0, rojo=positivo
+        const r2 = v > 0 ? Math.round(255) : Math.round(255 + v*255);
+        const b2 = v < 0 ? Math.round(255) : Math.round(255 - v*255);
+        const g2 = Math.round(255 - Math.abs(v)*200);
+        ctx.fillStyle = `rgb(${r2},${g2},${b2})`;
+        ctx.fillRect(x+1, y+1, cellW-2, cellH-2);
+        ctx.fillStyle = Math.abs(v) > 0.5 ? '#fff' : (isDark ? '#eee' : '#222');
+        ctx.fillText(v.toFixed(2), x + cellW/2, y + cellH/2);
+      });
+
+      // Labels eje X
+      ctx.save(); ctx.translate(pad.left, H - pad.bottom + 8);
+      ctx.textAlign = 'right'; ctx.fillStyle = isDark ? '#aaa' : '#555';
+      ctx.font = '10px -apple-system, sans-serif';
+      labels.forEach((l, i) => {
+        ctx.save(); ctx.translate(i*cellW + cellW/2, 0);
+        ctx.rotate(-Math.PI/4); ctx.fillText(l, 0, 0); ctx.restore();
+      });
+      ctx.restore();
+
+      // Labels eje Y
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = isDark ? '#aaa' : '#555'; ctx.font = '10px -apple-system, sans-serif';
+      labels.forEach((l, i) => { ctx.fillText(l, pad.left - 6, pad.top + i*cellH + cellH/2); });
+    }
+    drawHeatmap();
+    window.addEventListener('resize', drawHeatmap);
+  } catch(e) { console.warn('Heatmap no disponible:', e); }
+}
+
+// ── Segmentación por edad ────────────────────────────────────────────────────
+async function loadEdadChart() {
+  try {
+    const r = await fetch('/api/analytics/segmentacion/?por=edad', {headers: authHeaders()});
+    const d = await r.json();
+    const datos = d.datos || [];
+    if (!datos.length) return;
+    const labels = datos.map(x => x.rango_edad || x.grupo || x['paciente__edad'] || '?');
+    const values = datos.map(x => x.total);
+    if (window._edadChart) window._edadChart.destroy();
+    window._edadChart = new Chart(document.getElementById('edadChart'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Pacientes', data: values,
+        backgroundColor: ['#3498db','#27ae60','#f39c12','#e67e22','#e74c3c'],
+        borderRadius: 6 }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+  } catch(e) {}
+}
+
+loadHeatmap(); loadEdadChart(); loadTendenciaClinica(); loadTendenciaClinica();
+
+</script>
+{% endblock %}

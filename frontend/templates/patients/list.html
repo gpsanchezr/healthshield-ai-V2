@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Pacientes — HealthShield AI{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="fw-bold mb-0"><i class="bi bi-people me-2 text-primary"></i>Pacientes</h3>
+  <div class="d-flex gap-2">
+    <input type="text" id="searchInput" class="form-control" placeholder="Buscar por nombre..." style="width:250px" oninput="buscar(this.value)">
+    <select id="riesgoFilter" class="form-select" style="width:140px" onchange="loadPacientes()">
+      <option value="">Todos los riesgos</option>
+      <option value="Crítico">Crítico</option>
+      <option value="Alto">Alto</option>
+      <option value="Medio">Medio</option>
+      <option value="Bajo">Bajo</option>
+    </select>
+  </div>
+</div>
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light"><tr>
+          <th>ID</th><th>Paciente</th><th>Edad</th><th>Sexo</th>
+          <th>IMC</th><th>Glucosa</th><th>Presión</th><th>Riesgo</th><th>Diagnóstico</th><th>Acciones</th>
+        </tr></thead>
+        <tbody id="pacientesBody"><tr><td colspan="10" class="text-center py-3 text-muted">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <small class="text-muted">Total: <span id="totalPacientes">—</span> registros</small>
+    <div id="pagination" class="d-flex gap-2"></div>
+  </div>
+</div>
+
+<!-- Modal Detalle Paciente -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-person-badge me-2"></i>Detalle del Paciente</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detailBody">Cargando...</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage=1;let searchTimeout;
+
+async function loadPacientes(page=1){
+  currentPage=page;
+  const riesgo=document.getElementById('riesgoFilter').value;
+  const search=document.getElementById('searchInput').value;
+  let url=`/api/pacientes/?page=${page}`;
+  if(riesgo) url+=`&riesgo_enfermedad=${encodeURIComponent(riesgo)}`;
+  if(search) url+=`&search=${encodeURIComponent(search)}`;
+  const r=await fetch(url,{headers:authHeaders()});
+  const d=await r.json();
+  document.getElementById('totalPacientes').textContent=d.count||0;
+  renderTabla(d.results||[]);
+  renderPagination(d.count, page);
+}
+
+function renderTabla(items){
+  const RIESGO_CLASS={Bajo:'success',Medio:'warning text-dark',Alto:'orange',Crítico:'danger'};
+  document.getElementById('pacientesBody').innerHTML = items.length
+    ? items.map(p=>{
+        const r=p.registros?.[0]||{};
+        const badge=RIESGO_CLASS[r.riesgo_enfermedad]||'secondary';
+        return `<tr>
+          <td><small class="text-muted">${p.id_paciente_original}</small></td>
+          <td><strong>${p.nombres} ${p.apellidos}</strong></td>
+          <td>${p.edad}</td><td>${p.sexo==='M'?'<i class="bi bi-gender-male text-primary"></i>':'<i class="bi bi-gender-female text-danger"></i>'} ${p.sexo}</td>
+          <td>${r.imc||'—'} <small class="text-muted">${r.clasificacion_imc||''}</small></td>
+          <td>${r.glucosa||'—'}</td>
+          <td>${r.presion_sistolica||'—'}/${r.presion_diastolica||'—'}</td>
+          <td><span class="badge bg-${badge}">${r.riesgo_enfermedad||'—'}</span></td>
+          <td><small>${r.diagnostico_preliminar||'—'}</small></td>
+          <td><button class="btn btn-outline-primary btn-sm" onclick="verDetalle(${p.id})"><i class="bi bi-eye"></i></button></td>
+        </tr>`}).join('')
+    : '<tr><td colspan="10" class="text-center py-3 text-muted">Sin pacientes encontrados</td></tr>';
+}
+
+function renderPagination(total,page){
+  const pages=Math.ceil(total/50);
+  if(pages<=1){document.getElementById('pagination').innerHTML='';return;}
+  const pg=document.getElementById('pagination');
+  let html=`<button class="btn btn-outline-primary btn-sm" ${page<=1?'disabled':''} onclick="loadPacientes(${page-1})">‹</button>`;
+  for(let i=Math.max(1,page-2);i<=Math.min(pages,page+2);i++){
+    html+=`<button class="btn btn-${i===page?'primary':'outline-primary'} btn-sm" onclick="loadPacientes(${i})">${i}</button>`;
+  }
+  html+=`<button class="btn btn-outline-primary btn-sm" ${page>=pages?'disabled':''} onclick="loadPacientes(${page+1})">›</button>`;
+  pg.innerHTML=html;
+}
+
+function buscar(val){
+  clearTimeout(searchTimeout);
+  searchTimeout=setTimeout(()=>loadPacientes(1),350);
+}
+
+async function verDetalle(id){
+  const modal=new bootstrap.Modal(document.getElementById('detailModal'));
+  document.getElementById('detailBody').innerHTML='<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+  modal.show();
+  const r=await fetch(`/api/pacientes/${id}/`,{headers:authHeaders()});
+  const p=await r.json();
+  const reg=p.registros?.[0]||{};
+  const RIESGO_COLOR={Bajo:'#27ae60',Medio:'#f39c12',Alto:'#e67e22',Crítico:'#e74c3c'};
+  document.getElementById('detailBody').innerHTML=`
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="card border-0 bg-light text-center p-3">
+          <i class="bi bi-person-circle fs-1 text-primary mb-2"></i>
+          <h5 class="fw-bold">${p.nombres} ${p.apellidos}</h5>
+          <span class="badge" style="background:${RIESGO_COLOR[reg.riesgo_enfermedad]||'#6c757d'};font-size:.9rem">${reg.riesgo_enfermedad||'—'}</span>
+          <p class="mt-2 mb-0"><small class="text-muted">ID ${p.id_paciente_original} · ${p.edad} años · ${p.sexo==='M'?'Masculino':'Femenino'}</small></p>
+        </div>
+        <button class="btn btn-primary w-100 mt-3" onclick="predecir(${p.id})"><i class="bi bi-cpu me-2"></i>Predecir Riesgo con IA</button>
+        <div id="prediccionResult-${p.id}" class="mt-2"></div>
+      </div>
+      <div class="col-md-8">
+        <div class="row g-2">
+          ${[['IMC',reg.imc,reg.clasificacion_imc],['Glucosa',reg.glucosa,'mg/dL'],
+             ['Presión Sist.',reg.presion_sistolica,'mmHg'],['Presión Diast.',reg.presion_diastolica,'mmHg'],
+             ['Freq. Cardiaca',reg.frecuencia_cardiaca,'bpm'],['Saturación O₂',reg.saturacion_oxigeno,'%'],
+             ['Temperatura',reg.temperatura,'°C'],['Colesterol',reg.colesterol,'mg/dL']]
+            .map(([label,val,unit])=>`
+            <div class="col-6 col-md-3"><div class="card border-0 bg-light text-center p-2">
+              <small class="text-muted">${label}</small><strong>${val||'—'}</strong>
+              <small class="text-muted d-block">${unit||''}</small></div></div>`).join('')}
+        </div>
+        <div class="row g-2 mt-1">
+          <div class="col-md-6"><div class="card border-0 bg-light p-2">
+            <small class="text-muted d-block">Diagnóstico</small><strong>${reg.diagnostico_preliminar||'—'}</strong></div></div>
+          <div class="col-md-6"><div class="card border-0 bg-light p-2">
+            <small class="text-muted d-block">Factores de riesgo</small>
+            ${reg.fumador?'<span class="badge bg-danger me-1">Fumador</span>':''}
+            ${reg.consumo_alcohol?'<span class="badge bg-warning text-dark me-1">Alcohol</span>':''}
+            ${reg.antecedentes_familiares?'<span class="badge bg-info text-dark">Antec. fam.</span>':''}
+            ${!reg.fumador&&!reg.consumo_alcohol&&!reg.antecedentes_familiares?'<span class="text-muted small">Sin factores</span>':''}
+          </div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function predecir(id){
+  const div=document.getElementById(`prediccionResult-${id}`);
+  div.innerHTML='<div class="text-center"><div class="spinner-border spinner-border-sm text-primary"></div></div>';
+  const r=await fetch(`/api/predicciones/paciente/${id}/`,{method:'POST',headers:authHeaders()});
+  const d=await r.json();
+  const RIESGO_COLOR={Bajo:'success',Medio:'warning',Alto:'orange',Crítico:'danger'};
+  if(r.ok){
+    div.innerHTML=`<div class="alert alert-${RIESGO_COLOR[d.riesgo_predicho]||'secondary'} p-2">
+      <strong>IA predice: ${d.riesgo_predicho}</strong> (${(d.probabilidad_max*100).toFixed(1)}%)<br>
+      <small>Factores clave:<br>${d.factores_clave.map(f=>`• ${f.variable}: ${f.importancia}`).join('<br>')}</small>
+    </div>`;
+  } else {
+    div.innerHTML=`<div class="alert alert-danger p-2 small">${d.error||'Error en predicción'}</div>`;
+  }
+}
+
+loadPacientes();
+</script>
+{% endblock %}
