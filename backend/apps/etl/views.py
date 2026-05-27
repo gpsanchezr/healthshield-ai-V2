@@ -1,4 +1,5 @@
 import os
+import tempfile
 from django.utils import timezone
 from rest_framework import status, generics, filters
 from rest_framework.response import Response
@@ -8,6 +9,25 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import Paciente, RegistroClinico, EjecucionETL, Alerta
 from .serializers import PacienteSerializer, RegistroClinicoSerializer, EjecucionETLSerializer, AlertaSerializer
 from apps.authentication.permissions import EsAdministrador, EsAnalista, EsMedico
+
+MAX_ETL_UPLOAD_SIZE = 20 * 1024 * 1024
+ALLOWED_ETL_EXTENSIONS = ('.csv', '.xlsx', '.xls')
+
+def validar_archivo_etl(archivo):
+    if not archivo:
+        return 'Se requiere un archivo CSV o Excel.'
+    if archivo.size > MAX_ETL_UPLOAD_SIZE:
+        return f'Archivo demasiado grande: {archivo.size/1024/1024:.1f} MB. Maximo permitido: 20 MB.'
+    if not archivo.name.lower().endswith(ALLOWED_ETL_EXTENSIONS):
+        return f'Formato no soportado: {archivo.name}. Usa CSV, XLSX o XLS.'
+    return None
+
+def guardar_archivo_temporal(archivo, prefix):
+    suffix = os.path.splitext(archivo.name)[1].lower() or '.csv'
+    with tempfile.NamedTemporaryFile(delete=False, prefix=prefix, suffix=suffix) as tmp:
+        for chunk in archivo.chunks():
+            tmp.write(chunk)
+        return tmp.name
 
 class PacienteListView(generics.ListAPIView):
     queryset = Paciente.objects.all()
@@ -56,9 +76,7 @@ class RunETLView(APIView):
             return Response({
                 'error': f'Formato no soportado: {archivo.name}. Usa CSV, XLSX o XLS.'
             }, status=400)
-        tmp = f'/tmp/etl_{timezone.now().timestamp()}.csv'
-        with open(tmp, 'wb+') as f:
-            for chunk in archivo.chunks(): f.write(chunk)
+        tmp = guardar_archivo_temporal(archivo, 'etl_')
         try:
             from .pipeline import ETLPipeline
             from .extractors import CSVExtractor, ExcelExtractor
@@ -132,13 +150,10 @@ class RunETLAsyncView(APIView):
 
     def post(self, request) -> Response:
         archivo = request.FILES.get('archivo')
-        if not archivo:
-            return Response({'error': 'Se requiere un archivo'}, status=400)
-        import os, tempfile
-        from django.utils import timezone
-        tmp = f'/tmp/etl_async_{timezone.now().timestamp()}.csv'
-        with open(tmp, 'wb+') as f:
-            for chunk in archivo.chunks(): f.write(chunk)
+        error = validar_archivo_etl(archivo)
+        if error:
+            return Response({'error': error}, status=400)
+        tmp = guardar_archivo_temporal(archivo, 'etl_async_')
         try:
             from .tasks import run_etl_task
             task = run_etl_task.delay(

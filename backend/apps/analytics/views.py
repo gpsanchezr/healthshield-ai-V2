@@ -82,6 +82,7 @@ class TendenciaClinicaView(APIView):
     permission_classes = [EsMedico]
 
     def get(self, request) -> Response:
+        from django.db.models import Avg, Count, Max, Min
         from django.db.models.functions import TruncMonth
         from apps.etl.models import RegistroClinico
 

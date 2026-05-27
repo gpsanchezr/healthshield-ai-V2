@@ -5,11 +5,24 @@ function token() {
   return localStorage.getItem('access_token') || '';
 }
 
-function authHeaders() {
-  return {
-    'Content-Type': 'application/json',
+function csrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  if (meta?.content && meta.content !== 'NOTPROVIDED') return meta.content;
+
+  const cookie = document.cookie.split('; ').find(row => row.startsWith('csrftoken='));
+  return cookie ? decodeURIComponent(cookie.split('=')[1]) : null;
+}
+
+function authHeaders(includeJson = true) {
+  const headers = {
     'Authorization': 'Bearer ' + token()
   };
+  if (includeJson) headers['Content-Type'] = 'application/json';
+
+  const csrf = csrfToken();
+  if (csrf) headers['X-CSRFToken'] = csrf;
+
+  return headers;
 }
 
 function logout() {
@@ -17,6 +30,7 @@ function logout() {
   fetch(`${API}/auth/logout/`, {
     method: 'POST',
     headers: authHeaders(),
+    credentials: 'same-origin',
     body: JSON.stringify({ refresh })
   }).finally(() => {
     localStorage.clear();
@@ -29,16 +43,23 @@ function toggleTheme() {
   const isDark = html.getAttribute('data-bs-theme') === 'dark';
   const newTheme = isDark ? 'light' : 'dark';
   html.setAttribute('data-bs-theme', newTheme);
-  document.getElementById('themeIcon').className = isDark ? 'bi bi-moon-fill' : 'bi bi-sun-fill';
   localStorage.setItem('theme', newTheme);
+  const icon = document.getElementById('themeIcon');
+  const toggleIcon = document.getElementById('themeToggleIcon');
+  if (icon) icon.className = isDark ? 'bi bi-moon-fill' : 'bi bi-sun-fill';
+  if (toggleIcon) toggleIcon.textContent = isDark ? '🌙' : '☀️';
 }
 
 // Restore theme on load
 (function () {
-  const saved = localStorage.getItem('theme') || 'light';
-  document.documentElement.setAttribute('data-bs-theme', saved);
+  const saved = localStorage.getItem('theme');
+  const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const theme = saved || preferred;
+  document.documentElement.setAttribute('data-bs-theme', theme);
   const icon = document.getElementById('themeIcon');
-  if (icon) icon.className = saved === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+  const toggleIcon = document.getElementById('themeToggleIcon');
+  if (icon) icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+  if (toggleIcon) toggleIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
 })();
 
 // Check if token is present, redirect to login if not
@@ -52,8 +73,10 @@ function requireAuth() {
 
 // Load user info into navbar
 window.addEventListener('DOMContentLoaded', async () => {
-  if (!token() && !window.location.pathname.includes('/login/')) {
-    window.location.href = '/login/';
+  if (!token()) {
+    if (!window.location.pathname.includes('/login/')) {
+      window.location.href = '/login/';
+    }
     return;
   }
   const user = JSON.parse(localStorage.getItem('user') || '{}');

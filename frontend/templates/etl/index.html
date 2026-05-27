@@ -103,6 +103,17 @@
 {% block scripts %}
 <script>
 // ── ETL con polling de progreso ─────────────────────────────────────────────
+async function readApiResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch(e) { return {error: text}; }
+}
+
+function apiErrorMessage(data, fallback) {
+  return data.error || data.detail || data.errores?.join(', ') || fallback;
+}
+
 async function runETL(){
   const file = document.getElementById('archivoEtl').files[0];
   if (!file) { alert('Selecciona un archivo primero.'); return; }
@@ -119,19 +130,20 @@ async function runETL(){
     // Intentar primero el endpoint async (requiere Redis/Celery)
     const r = await fetch('/api/etl/run-async/', {
       method: 'POST',
-      headers: {'Authorization': 'Bearer ' + token()},
+      headers: authHeaders(false),
+      credentials: 'same-origin',
       body: fd,
     });
-    const d = await r.json();
+    const d = await readApiResponse(r);
 
     if (r.ok && d.task_id) {
       // Modo async: hacer polling cada 1.5s
       await pollETLTask(d.task_id);
-    } else if (d.error && d.error.includes('Celery')) {
+    } else if (r.status >= 500 || /celery|redis|broker|connection/i.test(d.error || d.detail || '')) {
       // Fallback síncrono si Celery no está disponible
       await runETLSync(file);
     } else {
-      showETLError(d.error || 'Error iniciando ETL');
+      showETLError(apiErrorMessage(d, 'Error iniciando ETL'));
       btn.disabled = false;
     }
   } catch(e) {
@@ -145,16 +157,17 @@ async function runETLSync(file) {
   const fd = new FormData(); fd.append('archivo', file);
   const r = await fetch('/api/etl/run/', {
     method: 'POST',
-    headers: {'Authorization': 'Bearer ' + token()},
+    headers: authHeaders(false),
+    credentials: 'same-origin',
     body: fd,
   });
-  const d = await r.json();
+  const d = await readApiResponse(r);
   document.getElementById('etlProgress').classList.add('d-none');
   if (r.ok) {
     showETLSuccess(d.report, d.advertencias);
     loadHistorial();
   } else {
-    showETLError(d.error || d.errores?.join(', ') || 'ETL fallido');
+    showETLError(apiErrorMessage(d, 'ETL fallido'));
   }
   document.getElementById('btnEtl').disabled = false;
 }

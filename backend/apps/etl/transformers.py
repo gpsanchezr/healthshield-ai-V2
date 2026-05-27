@@ -14,9 +14,9 @@ class BaseTransformer(ABC):
     def transform(self, df: pd.DataFrame) -> pd.DataFrame: pass
 
     def _log(self, msg, campo='', nivel='INFO'):
-        pass  # LogETL imported at runtime
         logger.info(f"  [{self.__class__.__name__}] {msg}")
         if self.ejecucion:
+            from .models import LogETL
             LogETL.objects.create(ejecucion=self.ejecucion, nivel=nivel, mensaje=msg, campo_afectado=campo)
 
 
