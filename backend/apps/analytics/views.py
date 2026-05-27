@@ -27,8 +27,10 @@ class DetectarCriticosView(APIView):
 class SegmentacionView(APIView):
     permission_classes = [EsAnalista]
     def get(self, request) -> Response:
-        from django.db.models import Count, Avg
-        from apps.etl.models import RegistroClinico
+        from django.db.models import (
+            Avg, Case, CharField, Count, IntegerField, Max, Min, Value, When
+        )
+        from apps.etl.models import Paciente, RegistroClinico
         por = request.query_params.get('por', 'riesgo')
         qs = RegistroClinico.objects.all()
         if por == 'riesgo':
@@ -37,6 +39,78 @@ class SegmentacionView(APIView):
             data = list(qs.values('paciente__sexo').annotate(total=Count('id'), avg_edad=Avg('paciente__edad')))
         elif por == 'diagnostico':
             data = list(qs.values('diagnostico_preliminar').annotate(total=Count('id')).order_by('-total')[:10])
+        elif por == 'edad':
+            pacientes = Paciente.objects.exclude(edad__isnull=True)
+            limites = pacientes.aggregate(min_edad=Min('edad'), max_edad=Max('edad'))
+            min_edad = limites['min_edad']
+            max_edad = limites['max_edad']
+
+            if min_edad is None or max_edad is None:
+                return Response({
+                    'segmentacion': 'edad',
+                    'labels': [],
+                    'data': [],
+                    'datos': [],
+                    'min_edad': None,
+                    'max_edad': None,
+                })
+
+            span = max_edad - min_edad + 1
+            base_size, extra = divmod(span, 3)
+            tamanos = [
+                base_size + (1 if index < extra else 0)
+                for index in range(3)
+            ]
+
+            rangos = []
+            inicio = min_edad
+            for orden, tamano in enumerate(tamanos, start=1):
+                # Mantiene tres barras incluso cuando hay menos de tres edades posibles.
+                fin = inicio + tamano - 1 if tamano > 0 else inicio
+                rangos.append((orden, inicio, fin, f'{inicio}-{fin}'))
+                inicio = fin + 1
+
+            rango_edad = Case(
+                *[
+                    When(edad__gte=inicio, edad__lte=fin, then=Value(label))
+                    for _, inicio, fin, label in rangos
+                ],
+                default=Value(rangos[-1][3]),
+                output_field=CharField(),
+            )
+            rango_orden = Case(
+                *[
+                    When(edad__gte=inicio, edad__lte=fin, then=Value(orden))
+                    for orden, inicio, fin, _ in rangos
+                ],
+                default=Value(3),
+                output_field=IntegerField(),
+            )
+
+            agrupados = (
+                pacientes
+                .annotate(rango_edad=rango_edad, rango_orden=rango_orden)
+                .values('rango_edad', 'rango_orden')
+                .annotate(total=Count('id'))
+                .order_by('rango_orden')
+            )
+
+            labels = [label for _, _, _, label in rangos]
+            conteos = {item['rango_edad']: item['total'] for item in agrupados}
+            chart_data = [conteos.get(label, 0) for label in labels]
+            data = [
+                {'rango_edad': label, 'total': total}
+                for label, total in zip(labels, chart_data)
+            ]
+
+            return Response({
+                'segmentacion': 'edad',
+                'labels': labels,
+                'data': chart_data,
+                'datos': data,
+                'min_edad': min_edad,
+                'max_edad': max_edad,
+            })
         elif por == 'imc':
             # Segmentación por clasificación IMC (requerida por PDF)
             data = []

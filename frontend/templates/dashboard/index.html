@@ -271,9 +271,9 @@ async function loadEdadChart() {
     const r = await fetch('/api/analytics/segmentacion/?por=edad', {headers: authHeaders()});
     const d = await r.json();
     const datos = d.datos || [];
-    if (!datos.length) return;
-    const labels = datos.map(x => x.rango_edad || x.grupo || x['paciente__edad'] || '?');
-    const values = datos.map(x => x.total);
+    const labels = d.labels || datos.map(x => x.rango_edad || x.grupo || x['paciente__edad'] || '?');
+    const values = d.data || datos.map(x => x.total);
+    if (!labels.length || !values.length) return;
     if (window._edadChart) window._edadChart.destroy();
     window._edadChart = new Chart(document.getElementById('edadChart'), {
       type: 'bar',
